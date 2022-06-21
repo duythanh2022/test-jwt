@@ -20,6 +20,32 @@ const authController = {
       console.log("s", error.message);
     }
   },
+  //generate access token
+  generateAccessToken: (user)=>{
+    jwt.sign(
+      {
+        id: user.id,
+        admin: user.admin,
+      },
+      process.env.JWT_ACCESS_KEY,
+      {
+        expiresIn: "50d",
+      }
+    );
+  },
+  //generate refresh token
+  generateRefreshToken :(user)=>{
+    jwt.sign(
+      {
+        id: user.id,
+        admin: user.admin,
+      },
+      process.env.JWT_REFRESH_KEY,
+      {
+        expiresIn: "50d",
+      }
+    );
+  },
   loginUser: async (req, res) => {
     try {
       const user = await User.findOne({ name: req.body.name });
@@ -34,22 +60,41 @@ const authController = {
         res.status(404).json("wrong password");
       }
       if (user && userPassword) {
-        const accessToken = jwt.sign(
-          {
-            id: user.id,
-            admin: user.admin,
-          },
-          process.env.JWT_ACCESS_KEY,
-          {
-            expiresIn: "50s",
-          }
-        );
-        res.status(200).json({user,accessToken});
+        const accessToken = authController.generateAccessToken
+        const refreshToken = authController.generateRefreshToken
+        res.cookie("refreshToken",refreshToken,{
+          httpOnly:true,
+          secure:false,
+          sameSite: "strict",
+          path: "/"
+        })
+        const {password, ...orthers} = user._doc
+        res.status(200).json({...orthers,accessToken,refreshToken});
       }
     } catch (error) {
       res.status(500).json(error);
       console.log("sw", error.message);
     }
   },
+  // request Refresh Token
+    requestRefreshToken: async(req,res)=>{
+      const refreshToken = req.cookies.refreshToken
+      if(!refreshToken) return res.status(401).json("you not auth")
+      jwt.verify(refreshToken,process.env.JWT_REFRESH_KEY, (error,user)=>{
+        if(error){
+          console.log(error)
+        }
+        // create new token 
+        const newAccessToken = authController.generateAccessToken(user)
+        const newRefreshToken = authController.generateRefreshToken(user)
+        res.cookie("refreshToken",newRefreshToken,{
+          httpOnly:true,
+          secure:false,
+          sameSite: "strict",
+          path: "/"
+        })
+        res.status(200).json({accessToken:newAccessToken})
+      })
+    }
 };
 module.exports = authController;
